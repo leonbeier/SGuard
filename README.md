@@ -25,3 +25,15 @@ Finger_RX has to be connected to TX of the sensor and Finger_TX with RX.
 If somebody tries to steal the object an alarm starts with the buzzer and LED. I used an active buzzer and an RGB LED with 220ohm resistors. Connect LED_R/G/B with the led and Buzzer with the buzzer.
 
 ### Notification
+To get a notification, the FPGA sends via UART "0 [Weight value]" if the object is secured and "1 [Weight value]" if the alarm is triggered. The Weight value is just the raw data from the ADC. Check the value for different weights to calculate the actual weight.
+
+The data is sent to an ESP8266 that uses Blynk to send a notification.<br>
+Here is an tutorial on how to do that: https://www.geekstips.com/esp8266-email-and-push-notifications-iot-blynk/<br>
+And here a tutorial on how to setup Blynk: https://www.instructables.com/id/Simple-Led-Control-With-Blynk-and-NodeMCU-Esp8266-/
+
+### Motor and Encoder
+To drive away I used two 6V 210RPM motors with wheels and encoders. With the encoders the motors drive streight and could go along a defined route. 
+The motors need a motor driver like the DRV8871. Connect Motor_R1/2 with the right motor, Motor_L1/2 with the left motor and one encoder output with Encoder_R/L. Maybe you need to change R1/2 or use the different encoder output if the SGuard doesn't drive as expected.
+
+### Ultrasonic sensor
+So the SGuard doesn't hit any objects, I added two ultrasonic sensors in the front. If one of them sees an object in front, the SGuard slows down and turns.
