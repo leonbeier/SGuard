@@ -1,0 +1,52 @@
+<?xml version="1.0"?>
+<ProjectRoot xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <Path />
+  <Items xsi:type="ProjectFolder">
+    <Path>IntToString</Path>
+    <Items xsi:type="ProjectFileVHDP">
+      <Path>IntToString\BinaryToBcd.vhdp</Path>
+    </Items>
+    <Items xsi:type="ProjectFileVHDP">
+      <Path>IntToString\BinaryToBcdDigit.vhdp</Path>
+    </Items>
+    <Items xsi:type="ProjectFileVHDP">
+      <Path>IntToString\IntToString.vhdp</Path>
+    </Items>
+  </Items>
+  <Items xsi:type="ProjectFolder">
+    <Path>Motor</Path>
+    <Items xsi:type="ProjectFileVHDP">
+      <Path>Motor\Motor_Controller.vhdp</Path>
+    </Items>
+    <Items xsi:type="ProjectFileVHDP">
+      <Path>Motor\Motor_Encoder.vhdp</Path>
+    </Items>
+    <Items xsi:type="ProjectFileVHDP">
+      <Path>Motor\PWM.vhdp</Path>
+    </Items>
+  </Items>
+  <Items xsi:type="ProjectFolder">
+    <Path>Sensors</Path>
+    <Items xsi:type="ProjectFileVHDP">
+      <Path>Sensors\Fingerprint.vhdp</Path>
+    </Items>
+    <Items xsi:type="ProjectFileVHDP">
+      <Path>Sensors\Pressure_ADC.vhdp</Path>
+    </Items>
+    <Items xsi:type="ProjectFileVHDP">
+      <Path>Sensors\Ultrasonic.vhdp</Path>
+    </Items>
+  </Items>
+  <Items xsi:type="ProjectFolder">
+    <Path>UART</Path>
+    <Items xsi:type="ProjectFileVHDP">
+      <Path>UART\UART.vhdp</Path>
+    </Items>
+    <Items xsi:type="ProjectFileVHDP">
+      <Path>UART\UART_String.vhdp</Path>
+    </Items>
+  </Items>
+  <Items xsi:type="ProjectFileVHDP">
+    <Path>SGuard.vhdp</Path>
+  </Items>
+</ProjectRoot>

@@ -1,0 +1,734 @@
+/*
+    Name: SGuard
+    Rev: 1.0
+    Creator: Leon Beier
+    Date: 17.08.2019
+    Copyright (c) 2019 Protop Solutions UG. All right reserved.
+    
+    Permission is hereby granted, free of charge, to any person obtaining a copy of 
+    this hdl code and associated documentation files (the "HDL Code"), to deal in the 
+    HDL Code without restriction, including without limitation the rights to use, 
+    copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the 
+    HDL Code, and to permit persons to whom the HDL Code is furnished to do so, 
+    subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the HDL Code.
+
+    THE HDL Code IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR 
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS 
+    FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR 
+    COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN 
+    AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION 
+    WITH THE HDL Code OR THE USE OR OTHER DEALINGS IN THE HDL Code.
+*/
+
+Main
+(
+    Wifi_RX     : IN    STD_LOGIC;          --receive pin for wifi
+    Wifi_TX     : OUT   STD_LOGIC;          --transmit pin for wifi
+    
+    Finger_RX   : IN    STD_LOGIC;          --receive pin
+    Finger_TX   : OUT   STD_LOGIC;          --transmit pin
+    
+    SCK_O       : OUT   STD_LOGIC;          --SCK Output for HX711 or similar ICs
+    DOUT_I      : IN    STD_LOGIC;          --DOUT Input form HX711
+    
+    LED_R       : BUFFER STD_LOGIC := '0';  --state LED 
+    LED_G       : BUFFER STD_LOGIC := '0';
+    LED_B       : BUFFER STD_LOGIC := '0';
+    
+    Buzzer      : BUFFER STD_LOGIC := '0';  --buzzer output
+    
+    Encoder_L   : IN  STD_LOGIC;
+    Encoder_R   : IN  STD_LOGIC;
+    
+    Motor_R1    : OUT STD_LOGIC;
+    Motor_R2    : OUT STD_LOGIC;
+    Motor_L1    : OUT STD_LOGIC;
+    Motor_L2    : OUT STD_LOGIC;
+    
+    US_Echo     : IN  STD_LOGIC;
+    US_Trig     : BUFFER STD_LOGIC;
+    
+    US_Echo2    : IN  STD_LOGIC;
+    US_Trig2    : BUFFER STD_LOGIC;
+    
+    btn         : IN  STD_LOGIC;
+    rst         : IN  STD_LOGIC;
+    led         : OUT STD_LOGIC_VECTOR(7 downto 0);
+)
+{
+    CONSTANT motor_enable   : STD_LOGIC := '1';
+
+    CONSTANT CLK_Frequency  : NATURAL := 12000000;
+    
+    --Pressure
+    #region Pressure
+    SIGNAL Pressure_ADC_BUSY             : STD_LOGIC;
+    SIGNAL Pressure_ADC_DATA             : STD_LOGIC_VECTOR  (23 downto 0);
+    
+    NewComponent Pressure_ADC 
+    (
+        CLK_Frequency    => CLK_Frequency,
+        
+        Reset            => NOT rst,
+        SCK              => SCK_O,
+        DOUT             => DOUT_I,
+        Busy             => Pressure_ADC_BUSY,
+        Data             => Pressure_ADC_DATA,
+    );
+    
+    #endregion
+    --Wifi
+    #region WiFi
+    CONSTANT max_bytes      : NATURAL := 12;   --8 for weight + 4 for "1 " and return
+    
+    SIGNAL outputString     : STD_LOGIC_VECTOR (max_bytes*8-1 downto 0);
+    
+    SIGNAL UART_TX_Enable   : STD_LOGIC := '0';
+    SIGNAL UART_TX_Bytes    : NATURAL range 0 to max_bytes;
+    SIGNAL UART_TX_Busy     : STD_LOGIC;
+    
+    NewComponent UART_String 
+    (
+        CLK_Frequency => CLK_Frequency,
+        Baudrate      => 9600,
+        Max_Bytes     => max_bytes,
+        
+        Reset         => NOT rst,
+        RX            => Wifi_RX,
+        TX            => Wifi_TX,
+        TX_Enable     => UART_TX_Enable,
+        TX_Bytes      => UART_TX_Bytes,
+        TX_Data       => outputString,
+        TX_Busy       => UART_TX_Busy,
+    );
+    #endregion
+    --Int to string
+    #region IntToString
+    SIGNAL Weight    : INTEGER := 0;     --Integer to convert
+    SIGNAL intString : STD_LOGIC_VECTOR (63 downto 0) := (others => '0'); --Created string (64 Bit, because 24 bit numbers have a maximum of 7 digits and one '-' -> 8*8 = 64)
+    SIGNAL usedChars : NATURAL := 0;     --Used chars for the number
+    SIGNAL intBusy   : STD_LOGIC := '0'; --'1' while converting
+    SIGNAL En_ItS    : STD_LOGIC := '0';
+    
+    NewComponent IntToString 
+    (
+        Bits       => 24,
+        Digits     => 7,
+        Fill       => '0',
+        
+        Number     => Weight,
+        Num_String => intString,
+        Enable     => En_ItS,
+        Used       => usedChars,
+        Busy       => intBusy,
+    );
+    #endregion
+
+    Process Weight_Process
+    (
+        VARIABLE state : NATURAL range 0 to 3 := 0;
+    )
+    {
+        If(rst = '0')
+        {
+            state := 0;
+            UART_TX_Enable <= '0';
+        }
+        Else
+        {
+            case(state)
+            {
+                when(0)
+                {
+                    If(secured_changed = '1')
+                    {
+                        Weight <= TO_INTEGER(SIGNED(Pressure_ADC_DATA));
+                        En_ItS <= '1';
+                        state := 1;
+                    }
+                }
+                When(1)
+                {
+                    state := 2;
+                }
+                when(2)
+                {
+                    if(intBusy = '0')
+                    {     
+                        If(alarm = '1')
+                        {
+                            outputString (15+usedChars*8+16 downto usedChars*8+16) <= x"3120";  --"1 " bei Alarm am Anfang
+                        }
+                        Else
+                        {
+                            outputString (15+usedChars*8+16 downto usedChars*8+16) <= x"3020";  --"0 " bei Gesichert einschalten
+                        }
+                        outputString (usedChars*8+15 downto 16) <= intString(intString'LENGTH-1 downto intString'LENGTH-(usedChars*8));
+                        outputString (15 downto 0) <= x"0d0a";
+                        UART_TX_Bytes  <= 4 + usedChars;
+                        UART_TX_Enable <= '1';
+                        En_ItS <= '0'; 
+                        state := 3;
+                    }
+                }
+                When(3)
+                {
+                    UART_TX_Enable <= '0';
+                    If(UART_TX_Busy = '0')
+                    {
+                        state := 0;
+                    }
+                }
+            }
+        }
+    }
+    
+    --Fingerprint
+    #region Fingerprint
+    SIGNAL Fingerprint_Controller_Confidence  : STD_LOGIC_VECTOR (15 downto 0);
+    SIGNAL Fingerprint_Controller_ID          : STD_LOGIC_VECTOR (15 downto 0);
+    SIGNAL Fingerprint_Controller_Busy        : STD_LOGIC;
+    
+    NewComponent Fingerprint_Controller 
+    (
+        CLK_Frequency => CLK_Frequency,
+        Update_Time   => 300,
+        
+        Reset         => NOT rst,
+        RX            => Finger_RX,
+        TX            => Finger_TX,
+        ID            => Fingerprint_Controller_ID,
+        Confidence    => Fingerprint_Controller_Confidence,
+        Busy          => Fingerprint_Controller_Busy,
+    );
+    
+    SIGNAL secured_changed      : STD_LOGIC := '0'; --After finger recognized one cycle '1'
+    SIGNAL secured              : STD_LOGIC := '0'; --Switches every time the finger is recognized
+    SIGNAL alarm                : STD_LOGIC := '0'; --Set to '1' if weight changes when secured
+    #endregion
+    
+    Process Finger_Process
+    (
+        VARIABLE pressure_prev             : STD_LOGIC_VECTOR  (23 downto 0);
+        VARIABLE wait_changed              : STD_LOGIC := '0';
+        VARIABLE wait_alarm                : NATURAL range 0 to CLK_Frequency := 0;
+    )
+    {
+        If(rst = '0')
+        {
+            pressure_prev   := (others => '0');
+            wait_changed    := '0';
+            secured_changed <= '0';
+            alarm           <= '0';
+            secured         <= '0';
+            --led               <= (others => '0');
+        }
+        Else
+        {
+            If(Fingerprint_Controller_ID(7 downto 0) /= x"00" AND wait_changed = '0' AND secured_changed = '0')
+            {
+                secured_changed <= '1';
+                If(alarm = '1')
+                {
+                    alarm <= '0';
+                }
+                
+                If(secured = '0')
+                {
+                    pressure_prev := Pressure_ADC_DATA;
+                }
+                secured <= NOT secured;
+                wait_alarm := 0;
+                --led <= Fingerprint_Controller_ID(7 downto 0);
+            }
+            Elsif (secured_changed = '1')
+            {
+                secured_changed <= '0';
+                wait_changed := '1';
+            }
+            Elsif(wait_changed = '1')
+            {
+                If(Fingerprint_Controller_ID(7 downto 0) = x"00")
+                {
+                    wait_changed := '0';
+                }
+            }
+            
+            If(secured = '1' AND alarm = '0')
+            {
+                If(wait_alarm < CLK_Frequency)
+                {
+                    wait_alarm := wait_alarm + 1;
+                }
+                Elsif(abs(TO_INTEGER(SIGNED(Pressure_ADC_DATA)) - TO_INTEGER(SIGNED(pressure_prev))) > 3000)
+                {
+                    alarm <= '1';
+                    secured_changed <= '1';
+                }
+            }
+        }
+    }
+    
+    CONSTANT blink_freq  : NATURAL := 10;
+    CONSTANT buzzer_freq : NATURAL := 20;
+    
+    Process Alarm_Process 
+    (
+        VARIABLE blink_count    : NATURAL range 0 to CLK_Frequency/blink_freq := 0;
+        VARIABLE buzzer_count   : NATURAL range 0 to CLK_Frequency/buzzer_freq := 0;
+    )
+    {
+        If(rst = '0')
+        {
+            blink_count := 0;
+            LED_R <= '0';
+            LED_G <= '0';
+            LED_B <= '0';
+            Buzzer <= '0';
+        }
+        Else
+        {
+            If(secured = '0')
+            {
+                LED_R <= '1';
+                LED_G <= '0';
+                LED_B <= '0';
+                Buzzer <= '0';
+            }
+            Else
+            {
+                If(alarm = '0')
+                {
+                    LED_R <= '0';
+                    LED_G <= '1';
+                    LED_B <= '0';
+                    Buzzer <= '0';
+                }
+                Else
+                {
+                    If(blink_count = CLK_Frequency/blink_freq)
+                    {
+                        LED_R <= NOT LED_R;
+                        LED_G <= '0';
+                        LED_B <= NOT LED_B;
+                        blink_count := 0;
+                    }
+                    Else
+                    {
+                        blink_count := blink_count + 1;
+                    }
+                    
+                    If(buzzer_count = CLK_Frequency/buzzer_freq)
+                    {
+                        buzzer_count := 0;
+                        Buzzer       <= NOT Buzzer;
+                    }
+                    Else
+                    {
+                        buzzer_count := buzzer_count + 1;
+                    }
+                }
+            }
+        }
+    }
+    
+    --Motor----------------------------
+    #region Motor
+    CONSTANT Max_Length                         : NATURAL := 10000;
+    
+    SIGNAL MR1                                  : STD_LOGIC := '0';
+    SIGNAL MR2                                  : STD_LOGIC := '0';
+    SIGNAL ML1                                  : STD_LOGIC := '0';
+    SIGNAL ML2                                  : STD_LOGIC := '0';
+    
+    SIGNAL Motor_Controller_RST_Drive           : STD_LOGIC := '0';
+    
+    SIGNAL Motor_Controller_Speed_L             : NATURAL   range 0 to Max_Length;
+    SIGNAL Motor_Controller_Speed_R             : NATURAL   range 0 to Max_Length;
+    SIGNAL Motor_Controller_Driven_L            : NATURAL   range 0 to Max_Length;
+    SIGNAL Motor_Controller_Driven_R            : NATURAL   range 0 to Max_Length;
+    SIGNAL Motor_Controller_Correction          : INTEGER;
+    
+    SIGNAL Motor_Controller_Drive_L             : INTEGER   range (-1)*Max_Length to Max_Length := 0;
+    SIGNAL Motor_Controller_Drive_R             : INTEGER   range (-1)*Max_Length to Max_Length := 0;
+    SIGNAL Motor_Controller_Drive_Speed         : NATURAL   range 0 to 255;
+    
+    SIGNAL Motor_Controller_Finished            : STD_LOGIC := '0';
+    SIGNAL Motor_Controller_Error               : STD_LOGIC := '0';
+    SIGNAL Motor_Controller_ENABLE              : STD_LOGIC := '1';
+    
+    NewComponent Motor_Controller 
+    (
+        CLK_Frequency       => CLK_Frequency,
+        
+        PWM_Frequency       => 100000, --100khz 8 bit pwm
+        Bits_Resolution     => 8,
+        
+        Holes_In_Disk       => 14,     --Polarity changes of encoder disk
+        Gear_Ratio          => 20,     --20 turns = 1 wheel turn
+        Wheel_Circumference => 204,    --Circumference of wheel in mm (π*diameter)
+        
+        Time_Invert_Divider => 12,     --For 12MHz -> Max_Time in µs
+        Max_Time            => 100000, --<0.1s for next encoder impuls
+        Max_Length          => Max_Length, --Maximum length to drive in mm (10000 = 10m)
+        Error_Delay         => 250,    --250ms to start motor and check for errors
+        Correction_Step     => 1,      --default
+        Length_Corr_Step    => 25,     --default
+        Max_Length_Diff     => 10,     --default
+        
+        Reset               => NOT rst,
+        Encoder_L           => Encoder_L,
+        Encoder_R           => Encoder_R,
+        Motor_LF            => ML1,
+        Motor_LB            => ML2,
+        Motor_RF            => MR1,
+        Motor_RB            => MR2,
+        
+        Enable              => Motor_Controller_ENABLE,
+        RST_Drive           => Motor_Controller_RST_Drive,
+        Drive_L             => Motor_Controller_Drive_L,
+        Drive_R             => Motor_Controller_Drive_R,
+        Drive_Speed         => Motor_Controller_Drive_Speed,
+        Speed_L             => Motor_Controller_Speed_L,
+        Speed_R             => Motor_Controller_Speed_R,
+        Driven_L            => Motor_Controller_Driven_L,
+        Driven_R            => Motor_Controller_Driven_R,
+        Finished            => Motor_Controller_Finished,
+        Error               => Motor_Controller_Error,
+        Correction          => Motor_Controller_Correction,
+    );
+    
+    Motor_R1 <= MR1;
+    Motor_R2 <= MR2;
+    Motor_L1 <= ML1;
+    Motor_L2 <= ML2;
+    #endregion
+    
+    #region Ultrasonic
+    SIGNAL Ultrasonic_Controller_DIST    : NATURAL   range 0 to 1000;
+    SIGNAL Ultrasonic_Controller_DIST2   : NATURAL   range 0 to 1000;
+    
+    NewComponent Ultrasonic_Controller 
+    (
+        CLK_Frequency    => CLK_Frequency,
+        Update_Frequency => 50,
+        
+        Reset            => NOT rst,
+        Trigger          => US_Trig,
+        Echo             => US_Echo,
+        Dist             => Ultrasonic_Controller_DIST,
+    );
+    
+    NewComponent Ultrasonic_Controller 
+    (
+        CLK_Frequency    => CLK_Frequency,
+        Update_Frequency => 50,
+        
+        Reset            => NOT rst,
+        Trigger          => US_Trig2,
+        Echo             => US_Echo2,
+        Dist             => Ultrasonic_Controller_DIST2,
+    );
+    #endregion
+    
+    #region Route
+    CONSTANT slow_dist                          : NATURAL := 80;   --distance to slow down (mm)
+    CONSTANT stop_dist                          : NATURAL := 60;   --distance to stop and turn
+    CONSTANT dist_divider                       : NATURAL := 2;    --higher = slows down slower
+    
+    CONSTANT start_length                       : NATURAL := 400;  --length to accelerate
+    CONSTANT min_length                         : NATURAL := 800;  --minimum length for acceleration
+    CONSTANT stop_length                        : NATURAL := 400;  --length to slow down
+    CONSTANT speed_divider                      : NATURAL := 10;   --higher = less acceleration
+    CONSTANT min_speed                          : NATURAL := 180;  --speed to keep spinning
+    
+    CONSTANT Turn_Route_L                       : INTEGER := 150;  --length for turning after collision
+    CONSTANT Turn_Route_R                       : INTEGER := -150;
+    CONSTANT Turn_Speed                         : NATURAL := 255;  --speed for turning
+    CONSTANT Turn_Start                         : INTEGER := -100; --length to drive backwars after collision
+    
+    --Route to drive
+    TYPE Route_Array IS ARRAY (natural range <>) OF Integer range (-1)*Max_Length to Max_Length;
+    SIGNAL Route_L   : Route_Array (0 to 3) :=  (
+    10000,
+    -200,
+    10000,
+    200
+);
+
+    SIGNAL Route_R   : Route_Array (0 to 3) :=  (
+    10000,
+    200,
+    10000,
+    -200
+    );
+    
+    SIGNAL Route_Speed : Route_Array (0 to 3) :=    (
+    255,
+    255,
+    255,
+    255
+    );
+    
+    SIGNAL Route_Start  : NATURAL := 0;     --Index of arrays to start route
+    SIGNAL Route_Length : NATURAL := 4;     --Number of route steps to drive
+    
+    SIGNAL Collision             : STD_LOGIC := '0';  --SGuard is too close to object
+    SIGNAL Collision_Type        : NATURAL   := 0;    --0 = None 1 = US1 2 = US2
+    
+    SIGNAL Approach              : STD_LOGIC := '0';  --SGurad is approaching an object 
+    SIGNAL Approach_Type         : NATURAL   := 0;    --0 = None 1 = US1 2 = US2
+    #endregion
+    
+    Process Motor_Process
+    (
+        VARIABLE state      : STD_LOGIC := '0'; --'0' = start '1' = wait to start
+        VARIABLE route_step : INTEGER   := 0;
+        VARIABLE btn_prev   : STD_LOGIC := '0';
+        VARIABLE start      : STD_LOGIC := '0';
+        VARIABLE busy_prev  : STD_LOGIC := '0';
+        VARIABLE stop       : STD_LOGIC := '0'; --'1' should slow down
+        VARIABLE speed      : NATURAL   := 0;
+        VARIABLE init_speed : NATURAL   := 0;
+        VARIABLE turn       : STD_LOGIC := '0';
+        VARIABLE start_turn : STD_LOGIC := '0';
+        VARIABLE us_ena     : STD_LOGIC := '0';
+    )
+    {   
+        If(rst = '0')
+        {
+            start := '0';
+            state := '0';
+            route_step := 0;
+            btn_prev := '0';
+            Motor_Controller_Drive_R <= 0;
+            Motor_Controller_Drive_L <= 0;
+            Motor_Controller_RST_Drive <= '0';
+            Motor_Controller_ENABLE <= '1';
+            busy_prev := '0';
+            stop := '0';
+            speed := 0;
+            init_speed := 0;
+            turn := '0';
+        }
+        Else
+        {
+            Motor_Controller_ENABLE      <= alarm;
+            
+                /*
+                If(UART_Array_RX_Busy='0' AND busy_prev='1')
+                {
+                    For(i IN 0 to max_bytes_bl/3-1)
+                    {
+                        Route_L(i) <=TO_INTEGER(SIGNED(UART_Array_RX_Data(i*3)));
+                        Route_R(i) <=TO_INTEGER(SIGNED(UART_Array_RX_Data(i*3+1)));
+                        Route_Speed(i) <=TO_INTEGER(SIGNED(UART_Array_RX_Data(i*3+2)));
+                    }
+                    
+                    start       := '1';
+                    route_step  := 0;
+                    Route_Length <= UART_Array_RX_Bytes/3;
+                    state       := '0';
+    
+                    us_ena := '0';
+                } 
+                busy_prev := UART_Array_RX_Busy;
+                */
+            
+            If(motor_enable = '1')
+            {
+                If(btn_prev = '0' AND ((NOT btn) OR alarm) = '1' AND start = '0')       --Startet Route wenn btn gedrückt wird
+                {
+                    start       := '1';
+                    route_step  := Route_Start;
+                    state       := '0';
+                    
+                    us_ena := '1';
+                }
+            }
+            btn_prev := (NOT btn) OR alarm;
+            
+            If(start = '1')
+            {
+                If(state = '0')
+                {
+                    If(Motor_Controller_Finished = '1' OR Motor_Controller_Error = '1')         --Startet Fahren wenn letzte Route beendet
+                    {
+                        If(us_ena = '0' OR (start_turn = '0' AND (turn = '0' OR (Collision = '0' AND turn = '1'))))
+                        {
+                            If(route_step < 0)
+                            {
+                                route_step := 0;
+                            }
+                            
+                            turn := '0';
+                            If(route_step < Route_Length)           --Guckt ob es noch eine Strecke zum Fahren gibt
+                            {
+                                Motor_Controller_Drive_L     <= Route_L(route_step);        --Setzt Werte für Strecke
+                                Motor_Controller_Drive_R     <= Route_R(route_step);
+                                If(abs(Route_L(route_step)) > min_length OR abs(Route_R(route_step)) > min_length)
+                                {
+                                    init_speed                  := Route_Speed(route_step)-(start_length/speed_divider);
+                                    stop                        := '0';
+                                }
+                                Else
+                                {
+                                    init_speed                  := Route_Speed(route_step);
+                                    stop                        := '1';
+                                }
+                                Motor_Controller_RST_Drive   <= '1';                        --Resettet Zähler von letzter
+                                state := '1';
+                            }
+                            Else                                    --Stoppt Fahrt wenn nicht
+                            {
+                                start := '0';
+                            }
+                            
+                            start_turn                   := '0';
+                        }
+                        Else
+                        {
+                            Motor_Controller_Drive_L     <= Turn_Route_L;       --Setzt Werte für Strecke
+                            Motor_Controller_Drive_R     <= Turn_Route_R;
+                            init_speed                   := Turn_Speed;
+                            stop                         := '1';
+                            Motor_Controller_RST_Drive   <= '1';                        --Resettet Zähler von letzter
+                            state                        := '1';
+                            route_step                   := -1;
+                            turn                         := '1';
+                            start_turn                   := '0';
+                        }
+                    }
+                    Elsif(stop = '0' AND (Motor_Controller_Driven_L > abs(Motor_Controller_Drive_L)-stop_length OR Motor_Controller_Driven_R > abs(Motor_Controller_Drive_R)-stop_length) AND (abs(Route_L(route_step)) > min_length OR abs(Route_R(route_step)) > min_length))
+                    {
+                        stop        := '1';
+                    }
+                    Elsif(stop = '0' AND Motor_Controller_Driven_L < start_length)
+                    {
+                        init_speed := (Route_Speed(route_step-1) - (start_length - Motor_Controller_Driven_L)/speed_divider);
+                    }
+                    Elsif(stop = '1' AND abs(Motor_Controller_Drive_L) - Motor_Controller_Driven_L < stop_length)
+                    {
+                        --init_speed := (Route_Speed(route_step-1) - (stop_length - (abs(Motor_Controller_Drive_L) - Motor_Controller_Driven_L))/speed_divider);
+                    }
+                }
+                Else
+                {
+                    Thread
+                    {
+                        Motor_Controller_RST_Drive <= '0';          --Setzt Reset auf '0' um das fahren zu starten
+                        While(Motor_Controller_Finished = '0'){}    --Wartet bis Fahren gestartet
+                        While(Motor_Controller_Finished = '1'){}
+                        state       := '0';
+                    }
+                }
+            }
+            
+            If(us_ena = '1' AND Collision = '1' AND start_turn = '0' AND state = '0')
+            {
+                Motor_Controller_Drive_L     <= Turn_Start;     --Setzt Werte für Strecke
+                Motor_Controller_Drive_R     <= Turn_Start;
+                start_turn                   := '1';
+                init_speed                   := Turn_Speed;
+                stop                         := '1';
+                Motor_Controller_RST_Drive   <= '1';                        --Resettet Zähler von letzter
+                state                        := '1';
+                route_step                   := -1;
+                turn                         := '1';
+            }
+            Else
+            {
+                --Wird langsamer wenn annähert
+                If(Approach = '1' AND Approach_Type = 1 AND turn = '0')
+                {
+                    speed := init_speed - (Ultrasonic_Controller_DIST-stop_dist)/dist_divider;
+                }
+                Elsif(Approach = '1' AND Approach_Type = 2 AND turn = '0')
+                {
+                    speed := init_speed - (Ultrasonic_Controller_DIST2-stop_dist)/dist_divider;
+                }
+                Else
+                {
+                    speed := init_speed;
+                }
+                
+                If(speed < min_speed)
+                {
+                    Motor_Controller_Drive_Speed <= min_speed;
+                }
+                Else
+                {
+                    Motor_Controller_Drive_Speed <= speed;
+                }
+            }
+        }
+    }
+
+
+    Process Collision_Process 
+    (
+        VARIABLE collision_cnt : NATURAL range 0 to 3 := 0;
+        VARIABLE approach_cnt : NATURAL range 0 to 3 := 0;
+        VARIABLE l_trig        : STD_LOGIC := '0';
+    )
+    {
+        If(l_trig = '0' AND US_Trig = '1')
+        {
+            If(Ultrasonic_Controller_DIST < stop_dist OR Ultrasonic_Controller_DIST2 < stop_dist)
+            {
+                If(collision_cnt = 3)
+                {
+                    Collision <= '1';
+                    If(Ultrasonic_Controller_DIST < Ultrasonic_Controller_DIST2)
+                    {
+                        Collision_Type <= 1;
+                    }
+                    Else
+                    {
+                        Collision_Type <= 2;
+                    }
+                }
+                Else
+                {
+                    collision_cnt := collision_cnt + 1;
+                }
+            }
+            Else
+            {
+                collision_cnt  := 0;
+                Collision      <= '0';
+                Collision_Type <= 0;
+            }
+            
+            If(Ultrasonic_Controller_DIST < slow_dist OR Ultrasonic_Controller_DIST2 < slow_dist)
+            {
+                If(approach_cnt = 3)
+                {
+                    Approach <= '1';
+                    If(Ultrasonic_Controller_DIST < Ultrasonic_Controller_DIST2)
+                    {
+                        Approach_Type <= 1;
+                    }
+                    Else
+                    {
+                        Approach_Type <= 2;
+                    }
+                }
+                Else
+                {
+                    approach_cnt := approach_cnt + 1;
+                }
+            }
+            Else
+            {
+                approach_cnt  := 0;
+                Approach      <= '0';
+                Approach_Type <= 0;
+            }
+        }
+        l_trig := US_Trig;
+    }
+}
