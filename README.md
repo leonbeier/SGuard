@@ -37,3 +37,4 @@ The motors need a motor driver like the DRV8871. Connect Motor_R1/2 with the rig
 
 ### Ultrasonic sensor
 So the SGuard doesn't hit any objects, I added two ultrasonic sensors in the front. If one of them sees an object in front, the SGuard slows down and turns.
+Important: The HC-SR04 ultrasonic sensor I used uses 5V so you have to use a level shifter to convert the Trig and Echo signal 
