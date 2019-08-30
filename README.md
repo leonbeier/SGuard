@@ -1,6 +1,8 @@
 # SGuard
 This is an example project designed with the VHDPlus IDE. With your fingerprint you can secure an object and if somebody tries to steal it, you get a notification and the SGuard drives around the room to escape the thief.
 
+![SGuard](SGuard_Image.png)
+
 It uses an FPGA, HX711, load cell, fingerprint reader, buzzer, RGB led, ESP8266, ultrasonic sensors and motors with encoders. 
 
 ## Software
