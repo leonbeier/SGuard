@@ -56,7 +56,7 @@ Component Motor_Encoder
         Gear_Ratio          : NATURAL := 1;         --34 = 1:34 Gear ratio
         Wheel_Circumference : NATURAL := 1;         --Diameter*π in mm or the unit u want to use for the outputs
         Max_Length          : NATURAL := 10000;     --10m if you use mm as unit
-        Time_Invert_Divider : NATURAL := 50;        --Cycles to count one up til next hole (50 + 50MHz = Time in µs)
+        Time_Invert_Divider : NATURAL := 12;        --Cycles to count one up til next hole (50 + 50MHz = Time in µs)
         Max_Time            : NATURAL := 1000000;   --Max_Time/(CLK_Frequency/Time_Invert_Divider) max seconds between holes
     );
     Encoder_In      : IN  STD_LOGIC;                --Encoder Input
