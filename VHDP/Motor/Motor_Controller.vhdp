@@ -86,7 +86,7 @@ Component Motor_Controller
         Holes_In_Disk       : NATURAL := 1;          --Changes from Low to High for one turn (Holes in Encoder Disk or Poles)
         Gear_Ratio          : NATURAL := 1;          --20 = 1:20 Gear ratio
         Wheel_Circumference : NATURAL := 1;          --Diameter*π in mm or the unit you want to use for the outputs
-        Time_Invert_Divider : NATURAL := 50;         --This value decides how precisely the Controller corrects the speed (more info in Motor_Encoder)
+        Time_Invert_Divider : NATURAL := 12;         --This value decides how precisely the Controller corrects the speed (more info in Motor_Encoder)
         Max_Time            : NATURAL := 1000000;    --Max_Time/(Frequency/Time_Invert_Divider) max seconds between holes
         Max_Length          : NATURAL := 10000;      --10m if you use mm as unit
         Error_Delay         : NATURAL := 500;        --time Controller waits with outputting error and stopping motors at the beginning
