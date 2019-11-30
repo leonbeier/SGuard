@@ -109,7 +109,6 @@ Component UART_String
     (
         VARIABLE ena_prev       : STD_LOGIC := '0';
         VARIABLE byte_cnt       : NATURAL range 0 to Max_Bytes := 0;
-        VARIABLE tx_bytes_buf   : NATURAL range 0 to Max_Bytes := 0;
         VARIABLE tx_state       : NATURAL range 0 to 2 := 0;
     )
     {
