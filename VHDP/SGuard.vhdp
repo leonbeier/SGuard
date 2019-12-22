@@ -369,10 +369,8 @@ Main
         Holes_In_Disk       => 11,     --Polarity changes of encoder disk
         Gear_Ratio          => 34,     --20 turns = 1 wheel turn
         Wheel_Circumference => 204,    --Circumference of wheel in mm (π*diameter)
-        
-        Time_Invert_Divider => 12,     --For 12MHz -> Max_Time in µs
+
         Debounce_Cycles     => 2000,   --encoder input has to keep value for: (1/12MHZ = 83ns)*2000 = 167us
-        Max_Time            => 100000, --<0.1s for next encoder impuls
         Max_Length          => Max_Length, --Maximum length to drive in mm (10000 = 10m)
         Error_Delay         => 250,    --250ms to start motor and check for errors
         Correction_Step     => 1,      --default
